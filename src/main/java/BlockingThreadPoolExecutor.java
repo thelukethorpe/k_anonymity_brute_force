@@ -1,18 +1,15 @@
 import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class BlockingThreadPoolExecutor<TWork> {
   private final LinkedBlockingQueue<TWork> workQueue;
-  private final Semaphore workQueueSema;
   private final List<Thread> workers;
 
   private BlockingThreadPoolExecutor(int numberOfWorkers, Consumer<TWork> doWork) {
     this.workQueue = new LinkedBlockingQueue<>(numberOfWorkers);
-    this.workQueueSema = new Semaphore(numberOfWorkers);
     this.workers =
         IntStream.range(0, numberOfWorkers)
             .boxed()
