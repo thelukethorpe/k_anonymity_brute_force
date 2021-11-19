@@ -53,12 +53,10 @@ public class TruncatingConcurrentPriorityQueue<E extends Comparable<E>> {
   public void offer(E item) {
     tryToCollectGarbage();
     Node next = findSuccessorNodeFor(item);
-    if (next != null) {
-      Node prev = next.prev;
-      next.insertPrev(item);
-      next.unlock();
-      prev.unlock();
-    }
+    Node prev = next.prev;
+    next.insertPrev(item);
+    next.unlock();
+    prev.unlock();
   }
 
   public E poll() {
