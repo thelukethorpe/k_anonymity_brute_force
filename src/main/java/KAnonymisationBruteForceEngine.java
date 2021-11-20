@@ -1,10 +1,8 @@
 import static java.time.temporal.ChronoUnit.SECONDS;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.time.LocalTime;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -15,62 +13,6 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class KAnonymisationBruteForceEngine {
-
-  private static <T> T exit(int status) {
-    System.exit(status);
-    return null;
-  }
-
-  private static DataGrouper buildDataGrouperFromCsvFile(File csvFile) {
-    CsvReader csvReader;
-    try {
-      csvReader = new CsvReader(csvFile);
-    } catch (FileNotFoundException e) {
-      e.printStackTrace();
-      return exit(1);
-    }
-
-    List<String> attributes;
-    try {
-      attributes = csvReader.readline();
-    } catch (IOException e) {
-      e.printStackTrace();
-      return exit(1);
-    }
-
-    DataGrouper.Builder<SimpleZippedRecord> dataGrouperBuilder = DataGrouper.builder(attributes);
-    try {
-      List<String> datasetCsvRecordAsList;
-      do {
-        datasetCsvRecordAsList = csvReader.readline();
-        if (!datasetCsvRecordAsList.isEmpty()) {
-          dataGrouperBuilder.addRecord(new SimpleZippedRecord(attributes, datasetCsvRecordAsList));
-        } else {
-          break;
-        }
-      } while (true);
-      csvReader.close();
-    } catch (IOException e) {
-      e.printStackTrace();
-      return exit(1);
-    }
-    return dataGrouperBuilder.build();
-  }
-
-  public static class SimpleZippedRecord implements Record {
-    private final Map<String, String> map = new HashMap<>();
-
-    public SimpleZippedRecord(List<String> attributes, List<String> values) {
-      for (int i = 0; i < attributes.size(); i++) {
-        map.put(attributes.get(i), values.get(i));
-      }
-    }
-
-    @Override
-    public Map<String, String> asMap() {
-      return map;
-    }
-  }
 
   private static class BruteForceResult implements Comparable<BruteForceResult> {
     private final double error;
@@ -132,7 +74,14 @@ public class KAnonymisationBruteForceEngine {
 
   public static void main(String[] args) {
     String csvFilePath = args[0];
-    DataGrouper dataGrouper = buildDataGrouperFromCsvFile(new File(csvFilePath));
+    DataFrame dataFrame;
+    try {
+      dataFrame = DataFrame.buildDataFrameFromCsvFile(new File(csvFilePath));
+    } catch (IOException e) {
+      e.printStackTrace();
+      System.exit(1);
+      return;
+    }
 
     List<GroupByStrategy> dobGroupByStrategies =
         Stream.of(5, 10, 20)
@@ -253,7 +202,7 @@ public class KAnonymisationBruteForceEngine {
     System.out.println(sizeOfBruteForce + " brute force iterations to cover.");
     ProgressTracker progressTracker = new ProgressTracker(sizeOfBruteForce);
 
-    double target = Math.sqrt(dataGrouper.getNumberOfRecords());
+    double target = Math.sqrt(dataFrame.getNumberOfRecords());
     int numberOfWorkers = Runtime.getRuntime().availableProcessors() - 1;
     int numberOfResults = 50;
     TruncatingConcurrentPriorityQueue<BruteForceResult> bruteForceResults =
@@ -262,7 +211,7 @@ public class KAnonymisationBruteForceEngine {
         BlockingThreadPoolExecutor.start(
             numberOfWorkers,
             attributeToGroupByStrategyMap -> {
-              List<Integer> sizes = dataGrouper.computeGroupSizes(attributeToGroupByStrategyMap);
+              List<Integer> sizes = dataFrame.computeGroupSizes(attributeToGroupByStrategyMap);
               double error =
                   sizes.stream()
                       .mapToDouble(Integer::doubleValue)
@@ -319,7 +268,7 @@ public class KAnonymisationBruteForceEngine {
                               numberVehiclesGroupByStrategy));
                     } catch (InterruptedException e) {
                       e.printStackTrace();
-                      exit(1);
+                      System.exit(1);
                     }
                   }
                 }
@@ -334,7 +283,7 @@ public class KAnonymisationBruteForceEngine {
       progressTracker.join();
     } catch (InterruptedException e) {
       e.printStackTrace();
-      exit(1);
+      System.exit(1);
     }
     blockingThreadPoolExecutor.forceShutdown();
     System.out.println();

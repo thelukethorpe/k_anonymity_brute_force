@@ -1,3 +1,5 @@
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -6,21 +8,39 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class DataGrouper {
+public class DataFrame {
 
   private final Map<String, String[]> attributeToColumnMap;
   private final int numberOfRecords;
 
-  private DataGrouper(Map<String, String[]> attributeToColumnMap, int numberOfRecords) {
+  private DataFrame(Map<String, String[]> attributeToColumnMap, int numberOfRecords) {
     this.attributeToColumnMap = attributeToColumnMap;
     this.numberOfRecords = numberOfRecords;
   }
 
   public int getNumberOfRecords() {
     return numberOfRecords;
+  }
+
+  public List<Record> getRecords() {
+    List<Entry<String, String[]>> attributeColumnPairs =
+        new ArrayList<>(attributeToColumnMap.entrySet());
+    return IntStream.range(0, numberOfRecords)
+        .boxed()
+        .map(
+            i ->
+                new Record() {
+                  @Override
+                  public Map<String, String> asMap() {
+                    return attributeColumnPairs.stream()
+                        .collect(Collectors.toMap(Entry::getKey, e -> e.getValue()[i]));
+                  }
+                })
+        .collect(Collectors.toList());
   }
 
   public List<Integer> computeGroupSizes(
@@ -44,10 +64,6 @@ public class DataGrouper {
       this.groups.add(initialDomain);
     }
 
-    private Groups(List<Set<Integer>> groups) {
-      this.groups = groups;
-    }
-
     public List<Integer> getGroupSizes() {
       return groups.stream().map(Set::size).collect(Collectors.toList());
     }
@@ -69,11 +85,11 @@ public class DataGrouper {
     }
   }
 
-  public static <TRecord extends Record> Builder<TRecord> builder(List<String> attributes) {
-    return new Builder<>(attributes);
+  public static Builder builder(List<String> attributes) {
+    return new Builder(attributes);
   }
 
-  public static class Builder<TRecord extends Record> {
+  public static class Builder {
 
     private final Map<String, List<String>> attributeToColumnMap;
     private int numberOfRecords = 0;
@@ -83,18 +99,34 @@ public class DataGrouper {
       attributes.forEach(attribute -> attributeToColumnMap.put(attribute, new LinkedList<>()));
     }
 
-    public void addRecord(TRecord record) {
+    public void addRecord(Record record) {
       for (Entry<String, String> attributeValuePair : record.asMap().entrySet()) {
         attributeToColumnMap.get(attributeValuePair.getKey()).add(attributeValuePair.getValue());
       }
       numberOfRecords++;
     }
 
-    public DataGrouper build() {
-      return new DataGrouper(
+    public DataFrame build() {
+      return new DataFrame(
           attributeToColumnMap.entrySet().stream()
               .collect(Collectors.toMap(Entry::getKey, e -> e.getValue().toArray(new String[] {}))),
           numberOfRecords);
     }
+  }
+
+  public static DataFrame buildDataFrameFromCsvFile(File csvFile) throws IOException {
+    CsvReader csvReader = new CsvReader(csvFile);
+    List<String> attributes = csvReader.readline();
+    DataFrame.Builder dataGrouperBuilder = DataFrame.builder(attributes);
+    List<String> datasetCsvRecordAsList;
+    do {
+      datasetCsvRecordAsList = csvReader.readline();
+      if (datasetCsvRecordAsList.isEmpty()) {
+        break;
+      }
+      dataGrouperBuilder.addRecord(new SimpleZippedRecord(attributes, datasetCsvRecordAsList));
+    } while (true);
+    csvReader.close();
+    return dataGrouperBuilder.build();
   }
 }
