@@ -1,5 +1,6 @@
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -29,6 +30,14 @@ public class CommuteTimeCorrelationEngine {
       this.latitude = latitude;
       this.longitude = longitude;
     }
+
+    public double getLatitude() {
+      return latitude;
+    }
+
+    public double getLongitude() {
+      return longitude;
+    }
   }
 
   private static final int RADIUS_OF_THE_EARTH_KM = 6371;
@@ -38,13 +47,8 @@ public class CommuteTimeCorrelationEngine {
     return sin * sin;
   }
 
-  // Uses the Haversine formula.
-  private static double computePostcodeHeuristicInKm(
-      String postcode1,
-      String postcode2,
-      Map<String, LatitudeLongitudePair> postcodeToCoordinateMap) {
-    LatitudeLongitudePair coordinates1 = postcodeToCoordinateMap.get(postcode1);
-    LatitudeLongitudePair coordinates2 = postcodeToCoordinateMap.get(postcode2);
+  private static double computeHaversineDistance(
+      LatitudeLongitudePair coordinates1, LatitudeLongitudePair coordinates2) {
     double degreesOfLatitude = degreesToRadians(coordinates2.latitude - coordinates1.latitude);
     double degreesOfLongitude = degreesToRadians(coordinates2.longitude - coordinates1.longitude);
     double a =
@@ -53,6 +57,14 @@ public class CommuteTimeCorrelationEngine {
                 * Math.cos(degreesToRadians(coordinates2.latitude))
                 * sinSquared(degreesOfLongitude / 2.0);
     return RADIUS_OF_THE_EARTH_KM * 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a));
+  }
+
+  private static double computePostcodeHeuristicInKm(
+      String postcode1,
+      String postcode2,
+      Map<String, LatitudeLongitudePair> postcodeToCoordinateMap) {
+    return computeHaversineDistance(
+        postcodeToCoordinateMap.get(postcode1), postcodeToCoordinateMap.get(postcode2));
   }
 
   private static double degreesToRadians(double degrees) {
@@ -140,6 +152,7 @@ public class CommuteTimeCorrelationEngine {
 
     System.out.println("Interpolating missing postcode mappings.");
     interpolateMissingPostcodeMappings(postcodeToCoordinateMap);
+
     System.out.println("Computing heuristics for commute time.");
     dataFrame.getRecords().stream()
         .filter(
@@ -160,5 +173,55 @@ public class CommuteTimeCorrelationEngine {
               return new PostcodeHeuristicCommuteTimePair(postcodeHeuristic, commuteTime);
             })
         .forEach(System.out::println);
+
+    System.out.println("Computing ranges for truncated postcodes");
+    for (int i = 1; i < 10; i++) {
+      Map<String, LatitudeLongitudePair> range =
+          postcodeToCoordinateMap.subMap(i + "0000", i + "9999");
+      List<LatitudeLongitudePair> coordinates = new ArrayList<>(range.values());
+      double longestDistance = 0.0;
+      double totalDistance = 0.0;
+      for (int j = 0; j < coordinates.size(); j++) {
+        for (int k = 0; k < coordinates.size(); k++) {
+          double distance = computeHaversineDistance(coordinates.get(j), coordinates.get(k));
+          longestDistance = Math.max(longestDistance, distance);
+          totalDistance += distance;
+        }
+      }
+      double meanDistance = totalDistance / (coordinates.size() * coordinates.size());
+      System.out.println(
+          "Postcode range "
+              + i
+              + "XXXX has a longest-cut of "
+              + longestDistance
+              + "km and mean of "
+              + meanDistance
+              + "km");
+      //      double minLatitude =
+      //          range.values().stream()
+      //              .mapToDouble(LatitudeLongitudePair::getLatitude)
+      //              .min()
+      //              .getAsDouble();
+      //      double maxLatitude =
+      //          range.values().stream()
+      //              .mapToDouble(LatitudeLongitudePair::getLatitude)
+      //              .max()
+      //              .getAsDouble();
+      //      double minLongitude =
+      //          range.values().stream()
+      //              .mapToDouble(LatitudeLongitudePair::getLongitude)
+      //              .min()
+      //              .getAsDouble();
+      //      double maxLongitude =
+      //          range.values().stream()
+      //              .mapToDouble(LatitudeLongitudePair::getLongitude)
+      //              .max()
+      //              .getAsDouble();
+      //      System.out.println("Postcode range " + i + "XXXX:");
+      //      System.out.println("\tmin lat=" + minLatitude);
+      //      System.out.println("\tmax lat=" + maxLatitude);
+      //      System.out.println("\tmin long=" + minLongitude);
+      //      System.out.println("\tmax long=" + maxLongitude);
+    }
   }
 }

@@ -9,6 +9,10 @@ public class SimpleZippedRecord implements Record {
     for (int i = 0; i < attributes.size(); i++) {
       map.put(attributes.get(i), values.get(i));
     }
+    // TODO: hack!
+    if (!values.get(6).equals("Employed")) {
+      map.replace("commute_time", "N/A");
+    }
   }
 
   @Override
